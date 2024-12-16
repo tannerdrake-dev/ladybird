@@ -658,8 +658,7 @@ WebIDL::ExceptionOr<GC::Ref<JS::ArrayBuffer>> RSAOAEP::encrypt(AlgorithmParams c
     auto ciphertext = TRY_OR_THROW_OOM(vm, ByteBuffer::create_uninitialized(public_key.length()));
     auto ciphertext_bytes = ciphertext.bytes();
 
-    auto rsa = ::Crypto::PK::RSA {};
-    rsa.set_public_key(public_key);
+    auto rsa = ::Crypto::PK::RSA { public_key };
     rsa.encrypt(padding, ciphertext_bytes);
 
     // 6. Return the result of creating an ArrayBuffer containing ciphertext.
@@ -687,8 +686,7 @@ WebIDL::ExceptionOr<GC::Ref<JS::ArrayBuffer>> RSAOAEP::decrypt(AlgorithmParams c
     // 3. Perform the decryption operation defined in Section 7.1 of [RFC3447] with the key represented by key as the recipient's RSA private key,
     //    the contents of ciphertext as the ciphertext to be decrypted, C, and label as the label, L, and with the hash function specified by the hash attribute
     //    of the [[algorithm]] internal slot of key as the Hash option and MGF1 (defined in Section B.2.1 of [RFC3447]) as the MGF option.
-    auto rsa = ::Crypto::PK::RSA {};
-    rsa.set_private_key(private_key);
+    auto rsa = ::Crypto::PK::RSA { private_key };
     u32 private_key_length = private_key.length();
 
     auto padding = TRY_OR_THROW_OOM(vm, ByteBuffer::create_uninitialized(private_key_length));
@@ -1575,12 +1573,15 @@ WebIDL::ExceptionOr<GC::Ref<CryptoKey>> AesCtr::import_key(AlgorithmParams const
         //              throw a DataError.
         auto data_bits = data.size() * 8;
         auto const& alg = jwk.alg;
-        if (data_bits == 128 && alg != "A128CTR") {
-            return WebIDL::DataError::create(m_realm, "Contradictory key size: key has 128 bits, but alg specifies non-128-bit algorithm"_string);
-        } else if (data_bits == 192 && alg != "A192CTR") {
-            return WebIDL::DataError::create(m_realm, "Contradictory key size: key has 192 bits, but alg specifies non-192-bit algorithm"_string);
-        } else if (data_bits == 256 && alg != "A256CTR") {
-            return WebIDL::DataError::create(m_realm, "Contradictory key size: key has 256 bits, but alg specifies non-256-bit algorithm"_string);
+        if (data_bits == 128) {
+            if (alg.has_value() && alg != "A128CTR")
+                return WebIDL::DataError::create(m_realm, "Contradictory key size: key has 128 bits, but alg specifies non-128-bit algorithm"_string);
+        } else if (data_bits == 192) {
+            if (alg.has_value() && alg != "A192CTR")
+                return WebIDL::DataError::create(m_realm, "Contradictory key size: key has 192 bits, but alg specifies non-192-bit algorithm"_string);
+        } else if (data_bits == 256) {
+            if (alg.has_value() && alg != "A256CTR")
+                return WebIDL::DataError::create(m_realm, "Contradictory key size: key has 256 bits, but alg specifies non-256-bit algorithm"_string);
         } else {
             return WebIDL::DataError::create(m_realm, MUST(String::formatted("Invalid key size: {} bits", data_bits)));
         }
@@ -1892,12 +1893,15 @@ WebIDL::ExceptionOr<GC::Ref<CryptoKey>> AesGcm::import_key(AlgorithmParams const
         //              throw a DataError.
         auto data_bits = data.size() * 8;
         auto const& alg = jwk.alg;
-        if (data_bits == 128 && alg != "A128GCM") {
-            return WebIDL::DataError::create(m_realm, "Contradictory key size: key has 128 bits, but alg specifies non-128-bit algorithm"_string);
-        } else if (data_bits == 192 && alg != "A192GCM") {
-            return WebIDL::DataError::create(m_realm, "Contradictory key size: key has 192 bits, but alg specifies non-192-bit algorithm"_string);
-        } else if (data_bits == 256 && alg != "A256GCM") {
-            return WebIDL::DataError::create(m_realm, "Contradictory key size: key has 256 bits, but alg specifies non-256-bit algorithm"_string);
+        if (data_bits == 128) {
+            if (alg.has_value() && alg != "A128GCM")
+                return WebIDL::DataError::create(m_realm, "Contradictory key size: key has 128 bits, but alg specifies non-128-bit algorithm"_string);
+        } else if (data_bits == 192) {
+            if (alg.has_value() && alg != "A192GCM")
+                return WebIDL::DataError::create(m_realm, "Contradictory key size: key has 192 bits, but alg specifies non-192-bit algorithm"_string);
+        } else if (data_bits == 256) {
+            if (alg.has_value() && alg != "A256GCM")
+                return WebIDL::DataError::create(m_realm, "Contradictory key size: key has 256 bits, but alg specifies non-256-bit algorithm"_string);
         } else {
             return WebIDL::DataError::create(m_realm, MUST(String::formatted("Invalid key size: {} bits", data_bits)));
         }
@@ -2017,11 +2021,15 @@ WebIDL::ExceptionOr<GC::Ref<JS::ArrayBuffer>> AesGcm::encrypt(AlgorithmParams co
 {
     auto const& normalized_algorithm = static_cast<AesGcmParams const&>(params);
 
-    // FIXME: 1. If plaintext has a length greater than 2^39 - 256 bytes, then throw an OperationError.
+    // 1. If plaintext has a length greater than 2^39 - 256 bytes, then throw an OperationError.
+    if (plaintext.size() > (1ULL << 39) - 256)
+        return WebIDL::OperationError::create(m_realm, "Invalid plaintext length"_string);
 
-    // FIXME: 2. If the iv member of normalizedAlgorithm has a length greater than 2^64 - 1 bytes, then throw an OperationError.
+    // 2. If the iv member of normalizedAlgorithm has a length greater than 2^64 - 1 bytes, then throw an OperationError.
+    // NOTE: This is not possible
 
-    // FIXME: 3. If the additionalData member of normalizedAlgorithm is present and has a length greater than 2^64 - 1 bytes, then throw an OperationError.
+    // 3. If the additionalData member of normalizedAlgorithm is present and has a length greater than 2^64 - 1 bytes, then throw an OperationError.
+    // NOTE: This is not possible
 
     // 4. If the tagLength member of normalizedAlgorithm is not present: Let tagLength be 128.
     auto tag_length = 0;
@@ -2051,19 +2059,16 @@ WebIDL::ExceptionOr<GC::Ref<JS::ArrayBuffer>> AesGcm::encrypt(AlgorithmParams co
     auto key_bytes = key->handle().get<ByteBuffer>();
 
     ::Crypto::Cipher::AESCipher::GCMMode cipher(key_bytes, key_length, ::Crypto::Cipher::Intent::Encryption);
-    ByteBuffer ciphertext = TRY_OR_THROW_OOM(m_realm->vm(), ByteBuffer::create_zeroed(plaintext.size()));
-    ByteBuffer tag = TRY_OR_THROW_OOM(m_realm->vm(), ByteBuffer::create_zeroed(tag_length / 8));
-    [[maybe_unused]] Bytes ciphertext_span = ciphertext.bytes();
-    [[maybe_unused]] Bytes tag_span = tag.bytes();
+    auto ciphertext = TRY_OR_THROW_OOM(m_realm->vm(), ByteBuffer::create_zeroed(plaintext.size()));
+    auto tag = TRY_OR_THROW_OOM(m_realm->vm(), ByteBuffer::create_zeroed(tag_length / 8));
 
-    // FIXME: cipher.encrypt(plaintext, ciphertext_span, normalized_algorithm.iv, additional_data, tag_span);
-    return WebIDL::NotSupportedError::create(m_realm, "AES GCM encryption not yet implemented"_string);
+    cipher.encrypt(plaintext, ciphertext.bytes(), normalized_algorithm.iv, additional_data, tag.bytes());
 
     // 7. Let ciphertext be equal to C | T, where '|' denotes concatenation.
-    // TRY_OR_THROW_OOM(m_realm->vm(), ciphertext.try_append(tag));
+    TRY_OR_THROW_OOM(m_realm->vm(), ciphertext.try_append(tag));
 
     // 8. Return the result of creating an ArrayBuffer containing ciphertext.
-    // return JS::ArrayBuffer::create(m_realm, ciphertext);
+    return JS::ArrayBuffer::create(m_realm, ciphertext);
 }
 
 WebIDL::ExceptionOr<GC::Ref<JS::ArrayBuffer>> AesGcm::decrypt(AlgorithmParams const& params, GC::Ref<CryptoKey> key, ByteBuffer const& ciphertext)
@@ -2088,16 +2093,18 @@ WebIDL::ExceptionOr<GC::Ref<JS::ArrayBuffer>> AesGcm::decrypt(AlgorithmParams co
     if (ciphertext.size() < tag_length / 8)
         return WebIDL::OperationError::create(m_realm, "Invalid ciphertext length"_string);
 
-    // FIXME: 3. If the iv member of normalizedAlgorithm has a length greater than 2^64 - 1 bytes, then throw an OperationError.
+    // 3. If the iv member of normalizedAlgorithm has a length greater than 2^64 - 1 bytes, then throw an OperationError.
+    // NOTE: This is not possible
 
-    // FIXME: 4. If the additionalData member of normalizedAlgorithm is present and has a length greater than 2^64 - 1 bytes, then throw an OperationError.
+    // 4. If the additionalData member of normalizedAlgorithm is present and has a length greater than 2^64 - 1 bytes, then throw an OperationError.
+    // NOTE: This is not possible
 
     // 5. Let tag be the last tagLength bits of ciphertext.
-    auto tag_bits = tag_length / 8;
-    auto tag = TRY_OR_THROW_OOM(m_realm->vm(), ciphertext.slice(ciphertext.size() - tag_bits, tag_bits));
+    auto tag_bytes = tag_length / 8;
+    auto tag = TRY_OR_THROW_OOM(m_realm->vm(), ciphertext.slice(ciphertext.size() - tag_bytes, tag_bytes));
 
     // 6. Let actualCiphertext be the result of removing the last tagLength bits from ciphertext.
-    auto actual_ciphertext = TRY_OR_THROW_OOM(m_realm->vm(), ciphertext.slice(0, ciphertext.size() - tag_bits));
+    auto actual_ciphertext = TRY_OR_THROW_OOM(m_realm->vm(), ciphertext.slice(0, ciphertext.size() - tag_bytes));
 
     // 7. Let additionalData be the contents of the additionalData member of normalizedAlgorithm if present or the empty octet string otherwise.
     auto additional_data = normalized_algorithm.additional_data.value_or(ByteBuffer {});
@@ -2114,22 +2121,18 @@ WebIDL::ExceptionOr<GC::Ref<JS::ArrayBuffer>> AesGcm::decrypt(AlgorithmParams co
     auto key_bytes = key->handle().get<ByteBuffer>();
 
     ::Crypto::Cipher::AESCipher::GCMMode cipher(key_bytes, key_length, ::Crypto::Cipher::Intent::Decryption);
-    ByteBuffer plaintext = TRY_OR_THROW_OOM(m_realm->vm(), ByteBuffer::create_zeroed(actual_ciphertext.size()));
-    [[maybe_unused]] Bytes plaintext_span = plaintext.bytes();
-    [[maybe_unused]] Bytes actual_ciphertext_span = actual_ciphertext.bytes();
-    [[maybe_unused]] Bytes tag_span = tag.bytes();
+    auto plaintext = TRY_OR_THROW_OOM(m_realm->vm(), ByteBuffer::create_zeroed(actual_ciphertext.size()));
 
-    // FIXME: auto result = cipher.decrypt(ciphertext, plaintext_span, normalized_algorithm.iv, additional_data, tag_span);
-    return WebIDL::NotSupportedError::create(m_realm, "AES GCM decryption not yet implemented"_string);
+    auto result = cipher.decrypt(actual_ciphertext.bytes(), plaintext.bytes(), normalized_algorithm.iv, additional_data, tag.bytes());
 
     // If the result of the algorithm is the indication of inauthenticity, "FAIL": throw an OperationError
-    // if (result == ::Crypto::VerificationConsistency::Inconsistent)
-    //     return WebIDL::OperationError::create(m_realm, "Decryption failed"_string);
+    if (result == ::Crypto::VerificationConsistency::Inconsistent)
+        return WebIDL::OperationError::create(m_realm, "Decryption failed"_string);
 
     // Otherwise: Let plaintext be the output P of the Authenticated Decryption Function.
 
     // 9. Return the result of creating an ArrayBuffer containing plaintext.
-    // return JS::ArrayBuffer::create(m_realm, plaintext);
+    return JS::ArrayBuffer::create(m_realm, plaintext);
 }
 
 WebIDL::ExceptionOr<Variant<GC::Ref<CryptoKey>, GC::Ref<CryptoKeyPair>>> AesGcm::generate_key(AlgorithmParams const& params, bool extractable, Vector<Bindings::KeyUsage> const& key_usages)
@@ -4487,7 +4490,7 @@ WebIDL::ExceptionOr<GC::Ref<JS::Object>> ED25519::export_key(Bindings::KeyFormat
         //      * Set the algorithm object identifier to the id-Ed25519 OID defined in [RFC8410].
         //    * Set the subjectPublicKey field to keyData.
         auto ed25519_oid = ::Crypto::ASN1::ed25519_oid;
-        auto data = TRY_OR_THROW_OOM(vm, ::Crypto::PK::wrap_in_subject_public_key_info(key_data, ed25519_oid, nullptr));
+        auto data = TRY_OR_THROW_OOM(vm, ::Crypto::PK::wrap_in_subject_public_key_info(key_data, ed25519_oid));
 
         // 3. Let result be a new ArrayBuffer associated with the relevant global object of this [HTML], and containing data.
         return JS::ArrayBuffer::create(m_realm, move(data));
@@ -4503,10 +4506,14 @@ WebIDL::ExceptionOr<GC::Ref<JS::Object>> ED25519::export_key(Bindings::KeyFormat
         //    * Set the version field to 0.
         //    * Set the privateKeyAlgorithm field to a PrivateKeyAlgorithmIdentifier ASN.1 type with the following properties:
         //      * Set the algorithm object identifier to the id-Ed25519 OID defined in [RFC8410].
-        //    * Set the privateKey field to the result of DER-encoding a CurvePrivateKey ASN.1 type, as defined in Section 7 of [RFC8410], that represents the Ed25519 private key represented by the [[handle]] internal slot of key
+        //    * Set the privateKey field to the result of DER-encoding a CurvePrivateKey ASN.1 type,
+        //      as defined in Section 7 of [RFC8410], that represents the Ed25519 private key
+        //      represented by the [[handle]] internal slot of key
+        ::Crypto::ASN1::Encoder encoder;
+        TRY_OR_THROW_OOM(vm, encoder.write(key_data.bytes()));
 
         auto ed25519_oid = ::Crypto::ASN1::ed25519_oid;
-        auto data = TRY_OR_THROW_OOM(vm, ::Crypto::PK::wrap_in_private_key_info(key_data, ed25519_oid, nullptr));
+        auto data = TRY_OR_THROW_OOM(vm, ::Crypto::PK::wrap_in_private_key_info(encoder.finish(), ed25519_oid));
 
         // 3. Let result be a new ArrayBuffer associated with the relevant global object of this [HTML], and containing data.
         return JS::ArrayBuffer::create(m_realm, move(data));
@@ -4525,7 +4532,7 @@ WebIDL::ExceptionOr<GC::Ref<JS::Object>> ED25519::export_key(Bindings::KeyFormat
 
         // 4. Set the x attribute of jwk according to the definition in Section 2 of [RFC8037].
         if (key->type() == Bindings::KeyType::Public) {
-            jwk.x = TRY_OR_THROW_OOM(vm, encode_base64url(key_data));
+            jwk.x = TRY_OR_THROW_OOM(vm, encode_base64url(key_data, AK::OmitPadding::Yes));
         } else {
             // The "x" parameter of the "epk" field is set as follows:
             // Apply the appropriate ECDH function to the ephemeral private key (as scalar input)
@@ -4533,13 +4540,13 @@ WebIDL::ExceptionOr<GC::Ref<JS::Object>> ED25519::export_key(Bindings::KeyFormat
             // The base64url encoding of the output is the value for the "x" parameter of the "epk" field.
             ::Crypto::Curves::Ed25519 curve;
             auto public_key = TRY_OR_THROW_OOM(vm, curve.generate_public_key(key_data));
-            jwk.x = TRY_OR_THROW_OOM(vm, encode_base64url(key_data));
+            jwk.x = TRY_OR_THROW_OOM(vm, encode_base64url(public_key, AK::OmitPadding::Yes));
         }
 
         // 5. If the [[type]] internal slot of key is "private"
         if (key->type() == Bindings::KeyType::Private) {
             // 1. Set the d attribute of jwk according to the definition in Section 2 of [RFC8037].
-            jwk.d = TRY_OR_THROW_OOM(vm, encode_base64url(key_data));
+            jwk.d = TRY_OR_THROW_OOM(vm, encode_base64url(key_data, AK::OmitPadding::Yes));
         }
 
         // 6. Set the key_ops attribute of jwk to the usages attribute of key.
@@ -5175,7 +5182,7 @@ WebIDL::ExceptionOr<GC::Ref<JS::Object>> X25519::export_key(Bindings::KeyFormat 
         //    Set the algorithm object identifier to the id-X25519 OID defined in [RFC8410].
         //    Set the subjectPublicKey field to keyData.
         auto public_key = handle.get<ByteBuffer>();
-        auto data = TRY_OR_THROW_OOM(vm, ::Crypto::PK::wrap_in_subject_public_key_info(public_key, ::Crypto::ASN1::x25519_oid, nullptr));
+        auto data = TRY_OR_THROW_OOM(vm, ::Crypto::PK::wrap_in_subject_public_key_info(public_key, ::Crypto::ASN1::x25519_oid));
 
         // 3. Let result be a new ArrayBuffer associated with the relevant global object of this [HTML], and containing data.
         result = JS::ArrayBuffer::create(m_realm, data);
@@ -5194,7 +5201,10 @@ WebIDL::ExceptionOr<GC::Ref<JS::Object>> X25519::export_key(Bindings::KeyFormat 
         //    Set the privateKey field to the result of DER-encoding a CurvePrivateKey ASN.1 type, as defined in Section 7 of [RFC8410],
         //    that represents the X25519 private key represented by the [[handle]] internal slot of key
         auto private_key = handle.get<ByteBuffer>();
-        auto data = TRY_OR_THROW_OOM(vm, ::Crypto::PK::wrap_in_private_key_info(private_key, ::Crypto::ASN1::x25519_oid, nullptr));
+
+        ::Crypto::ASN1::Encoder encoder;
+        TRY_OR_THROW_OOM(vm, encoder.write(private_key));
+        auto data = TRY_OR_THROW_OOM(vm, ::Crypto::PK::wrap_in_private_key_info(encoder.finish(), ::Crypto::ASN1::x25519_oid));
 
         // 3. Let result be a new ArrayBuffer associated with the relevant global object of this [HTML], and containing data.
         result = JS::ArrayBuffer::create(m_realm, data);
@@ -5214,7 +5224,7 @@ WebIDL::ExceptionOr<GC::Ref<JS::Object>> X25519::export_key(Bindings::KeyFormat 
         // 4. Set the x attribute of jwk according to the definition in Section 2 of [RFC8037].
         if (key->type() == Bindings::KeyType::Public) {
             auto public_key = handle.get<ByteBuffer>();
-            jwk.x = TRY_OR_THROW_OOM(vm, encode_base64url(public_key));
+            jwk.x = TRY_OR_THROW_OOM(vm, encode_base64url(public_key, AK::OmitPadding::Yes));
         } else {
             // The "x" parameter of the "epk" field is set as follows:
             // Apply the appropriate ECDH function to the ephemeral private key (as scalar input)
@@ -5222,14 +5232,14 @@ WebIDL::ExceptionOr<GC::Ref<JS::Object>> X25519::export_key(Bindings::KeyFormat 
             // The base64url encoding of the output is the value for the "x" parameter of the "epk" field.
             ::Crypto::Curves::X25519 curve;
             auto public_key = TRY_OR_THROW_OOM(vm, curve.generate_public_key(handle.get<ByteBuffer>()));
-            jwk.x = TRY_OR_THROW_OOM(vm, encode_base64url(public_key));
+            jwk.x = TRY_OR_THROW_OOM(vm, encode_base64url(public_key, AK::OmitPadding::Yes));
         }
 
         // 5. If the [[type]] internal slot of key is "private"
         if (key->type() == Bindings::KeyType::Private) {
             // 1. Set the d attribute of jwk according to the definition in Section 2 of [RFC8037].
             auto private_key = handle.get<ByteBuffer>();
-            jwk.d = TRY_OR_THROW_OOM(vm, encode_base64url(private_key));
+            jwk.d = TRY_OR_THROW_OOM(vm, encode_base64url(private_key, AK::OmitPadding::Yes));
         }
 
         // 6. Set the key_ops attribute of jwk to the usages attribute of key.
@@ -5419,7 +5429,7 @@ WebIDL::ExceptionOr<GC::Ref<JS::Object>> X448::export_key(Bindings::KeyFormat fo
         //      * Set the algorithm object identifier to the id-X448 OID defined in [RFC8410].
         //    * Set the subjectPublicKey field to keyData.
         auto x448_oid = ::Crypto::ASN1::x448_oid;
-        auto data = TRY_OR_THROW_OOM(m_realm->vm(), ::Crypto::PK::wrap_in_subject_public_key_info(key_data, x448_oid, nullptr));
+        auto data = TRY_OR_THROW_OOM(m_realm->vm(), ::Crypto::PK::wrap_in_subject_public_key_info(key_data, x448_oid));
 
         // 3. Let result be a new ArrayBuffer associated with the relevant global object of this [HTML], and containing data.
         return JS::ArrayBuffer::create(m_realm, data);
@@ -5436,8 +5446,11 @@ WebIDL::ExceptionOr<GC::Ref<JS::Object>> X448::export_key(Bindings::KeyFormat fo
         //    * Set the privateKeyAlgorithm field to a PrivateKeyAlgorithmIdentifier ASN.1 type with the following properties:
         //      * Set the algorithm object identifier to the id-X448 OID defined in [RFC8410].
         //    * Set the privateKey field to the result of DER-encoding a CurvePrivateKey ASN.1 type, as defined in Section 7 of [RFC8410], that represents the X448 private key represented by the [[handle]] internal slot of key
+        ::Crypto::ASN1::Encoder encoder;
+        TRY_OR_THROW_OOM(m_realm->vm(), encoder.write(key_data.bytes()));
+
         auto x448_oid = ::Crypto::ASN1::x448_oid;
-        auto data = TRY_OR_THROW_OOM(m_realm->vm(), ::Crypto::PK::wrap_in_private_key_info(key_data, x448_oid, nullptr));
+        auto data = TRY_OR_THROW_OOM(m_realm->vm(), ::Crypto::PK::wrap_in_private_key_info(encoder.finish(), x448_oid));
 
         // 3. Let result be a new ArrayBuffer associated with the relevant global object of this [HTML], and containing data.
         return JS::ArrayBuffer::create(m_realm, data);
@@ -5455,12 +5468,18 @@ WebIDL::ExceptionOr<GC::Ref<JS::Object>> X448::export_key(Bindings::KeyFormat fo
         jwk.crv = "X448"_string;
 
         // 4. Set the x attribute of jwk according to the definition in Section 2 of [RFC8037].
-        jwk.x = TRY_OR_THROW_OOM(m_realm->vm(), encode_base64url(key_data));
+        if (key->type() == Bindings::KeyType::Public) {
+            jwk.x = TRY_OR_THROW_OOM(m_realm->vm(), encode_base64url(key_data, AK::OmitPadding::Yes));
+        } else {
+            ::Crypto::Curves::X448 curve;
+            auto public_key = TRY_OR_THROW_OOM(m_realm->vm(), curve.generate_public_key(key_data));
+            jwk.x = TRY_OR_THROW_OOM(m_realm->vm(), encode_base64url(public_key, AK::OmitPadding::Yes));
+        }
 
         // 5. If the [[type]] internal slot of key is "private"
         if (key->type() == Bindings::KeyType::Private) {
             // 1. Set the d attribute of jwk according to the definition in Section 2 of [RFC8037].
-            jwk.d = TRY_OR_THROW_OOM(m_realm->vm(), encode_base64url(key_data));
+            jwk.d = TRY_OR_THROW_OOM(m_realm->vm(), encode_base64url(key_data, AK::OmitPadding::Yes));
         }
 
         // 6. Set the key_ops attribute of jwk to the usages attribute of key.
