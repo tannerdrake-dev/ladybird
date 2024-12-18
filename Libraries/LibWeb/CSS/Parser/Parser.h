@@ -8,6 +8,7 @@
 #pragma once
 
 #include <AK/Error.h>
+#include <AK/NonnullRawPtr.h>
 #include <AK/RefPtr.h>
 #include <AK/Vector.h>
 #include <LibGfx/Font/UnicodeRange.h>
@@ -33,6 +34,29 @@
 namespace Web::CSS::Parser {
 
 class PropertyDependencyNode;
+
+namespace CalcParsing {
+struct Operator {
+    char delim;
+};
+struct ProductNode;
+struct SumNode;
+struct InvertNode;
+struct NegateNode;
+using Node = Variant<Operator, Number, Dimension, CalculationNode::ConstantType, NonnullOwnPtr<ProductNode>, NonnullOwnPtr<SumNode>, NonnullOwnPtr<InvertNode>, NonnullOwnPtr<NegateNode>, NonnullRawPtr<ComponentValue const>>;
+struct ProductNode {
+    Vector<Node> children;
+};
+struct SumNode {
+    Vector<Node> children;
+};
+struct InvertNode {
+    Node child;
+};
+struct NegateNode {
+    Node child;
+};
+}
 
 class Parser {
 public:
@@ -330,6 +354,13 @@ private:
     RefPtr<CSSStyleValue> parse_font_language_override_value(TokenStream<ComponentValue>&);
     RefPtr<CSSStyleValue> parse_font_feature_settings_value(TokenStream<ComponentValue>&);
     RefPtr<CSSStyleValue> parse_font_variation_settings_value(TokenStream<ComponentValue>&);
+    RefPtr<CSSStyleValue> parse_font_variant(TokenStream<ComponentValue>&);
+    RefPtr<CSSStyleValue> parse_font_variant_alternates_value(TokenStream<ComponentValue>&);
+    RefPtr<CSSStyleValue> parse_font_variant_caps_value(TokenStream<ComponentValue>&);
+    RefPtr<CSSStyleValue> parse_font_variant_east_asian_value(TokenStream<ComponentValue>&);
+    RefPtr<CSSStyleValue> parse_font_variant_emoji(TokenStream<ComponentValue>&);
+    RefPtr<CSSStyleValue> parse_font_variant_ligatures_value(TokenStream<ComponentValue>&);
+    RefPtr<CSSStyleValue> parse_font_variant_numeric_value(TokenStream<ComponentValue>&);
     RefPtr<CSSStyleValue> parse_list_style_value(TokenStream<ComponentValue>&);
     RefPtr<CSSStyleValue> parse_math_depth_value(TokenStream<ComponentValue>&);
     RefPtr<CSSStyleValue> parse_overflow_value(TokenStream<ComponentValue>&);
@@ -364,6 +395,7 @@ private:
     RefPtr<CSSStyleValue> parse_grid_area_shorthand_value(TokenStream<ComponentValue>&);
     RefPtr<CSSStyleValue> parse_grid_shorthand_value(TokenStream<ComponentValue>&);
 
+    OwnPtr<CalculationNode> convert_to_calculation_node(CalcParsing::Node const&);
     OwnPtr<CalculationNode> parse_a_calculation(Vector<ComponentValue> const&);
 
     ParseErrorOr<NonnullRefPtr<Selector>> parse_complex_selector(TokenStream<ComponentValue>&, SelectorType);

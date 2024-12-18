@@ -230,7 +230,7 @@ void DisplayListRecorder::draw_text(Gfx::IntRect const& rect, String raw_text, G
     if (rect.is_empty())
         return;
 
-    auto glyph_run = Gfx::shape_text({}, 0, raw_text.code_points(), font, Gfx::GlyphRun::TextType::Ltr);
+    auto glyph_run = Gfx::shape_text({}, 0, raw_text.code_points(), font, Gfx::GlyphRun::TextType::Ltr, {});
     float baseline_x = 0;
     if (alignment == Gfx::TextAlignment::CenterLeft) {
         baseline_x = rect.x();
@@ -310,7 +310,7 @@ void DisplayListRecorder::pop_stacking_context()
     append(PopStackingContext {});
 }
 
-void DisplayListRecorder::apply_backdrop_filter(Gfx::IntRect const& backdrop_region, BorderRadiiData const& border_radii_data, CSS::ResolvedFilter const& backdrop_filter)
+void DisplayListRecorder::apply_backdrop_filter(Gfx::IntRect const& backdrop_region, BorderRadiiData const& border_radii_data, Vector<Gfx::Filter> const& backdrop_filter)
 {
     if (backdrop_region.is_empty())
         return;
@@ -407,9 +407,9 @@ void DisplayListRecorder::apply_opacity(float opacity)
     append(ApplyOpacity { .opacity = opacity });
 }
 
-void DisplayListRecorder::apply_filters(CSS::ResolvedFilter filter)
+void DisplayListRecorder::apply_filters(Vector<Gfx::Filter> filter)
 {
-    append(ApplyFilters { .filter = filter });
+    append(ApplyFilters { .filter = move(filter) });
 }
 
 void DisplayListRecorder::apply_transform(Gfx::FloatPoint origin, Gfx::FloatMatrix4x4 matrix)

@@ -61,12 +61,14 @@ WebIDL::ExceptionOr<GC::Ref<PannerNode>> PannerNode::construct_impl(JS::Realm& r
 
 PannerNode::PannerNode(JS::Realm& realm, GC::Ref<BaseAudioContext> context, PannerOptions const& options)
     : AudioNode(realm, context)
+    , m_panning_model(options.panning_model)
     , m_position_x(AudioParam::create(realm, options.position_x, NumericLimits<float>::lowest(), NumericLimits<float>::max(), Bindings::AutomationRate::ARate))
     , m_position_y(AudioParam::create(realm, options.position_y, NumericLimits<float>::lowest(), NumericLimits<float>::max(), Bindings::AutomationRate::ARate))
     , m_position_z(AudioParam::create(realm, options.position_z, NumericLimits<float>::lowest(), NumericLimits<float>::max(), Bindings::AutomationRate::ARate))
     , m_orientation_x(AudioParam::create(realm, options.orientation_x, NumericLimits<float>::lowest(), NumericLimits<float>::max(), Bindings::AutomationRate::ARate))
     , m_orientation_y(AudioParam::create(realm, options.orientation_y, NumericLimits<float>::lowest(), NumericLimits<float>::max(), Bindings::AutomationRate::ARate))
     , m_orientation_z(AudioParam::create(realm, options.orientation_z, NumericLimits<float>::lowest(), NumericLimits<float>::max(), Bindings::AutomationRate::ARate))
+    , m_distance_model(options.distance_model)
     , m_ref_distance(options.ref_distance)
     , m_max_distance(options.max_distance)
     , m_rolloff_factor(options.rolloff_factor)
@@ -161,6 +163,26 @@ WebIDL::ExceptionOr<void> PannerNode::set_orientation(float x, float y, float z)
     m_orientation_y->set_value(y);
     m_orientation_z->set_value(z);
     return {};
+}
+
+// https://webaudio.github.io/web-audio-api/#dom-audionode-channelcountmode
+WebIDL::ExceptionOr<void> PannerNode::set_channel_count_mode(Bindings::ChannelCountMode mode)
+{
+    if (mode == Bindings::ChannelCountMode::Max) {
+        return WebIDL::NotSupportedError::create(realm(), "PannerNode does not support 'max' as channelCountMode."_string);
+    }
+
+    return AudioNode::set_channel_count_mode(mode);
+}
+
+// https://webaudio.github.io/web-audio-api/#dom-audionode-channelcount
+WebIDL::ExceptionOr<void> PannerNode::set_channel_count(WebIDL::UnsignedLong channel_count)
+{
+    if (channel_count > 2) {
+        return WebIDL::NotSupportedError::create(realm(), "PannerNode does not support channel count greater than 2"_string);
+    }
+
+    return AudioNode::set_channel_count(channel_count);
 }
 
 }
