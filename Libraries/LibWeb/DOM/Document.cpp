@@ -442,13 +442,13 @@ void Document::initialize(JS::Realm& realm)
 // https://html.spec.whatwg.org/multipage/document-lifecycle.html#populate-with-html/head/body
 WebIDL::ExceptionOr<void> Document::populate_with_html_head_and_body()
 {
-    // 1. Let html be the result of creating an element given document, html, and the HTML namespace.
+    // 1. Let html be the result of creating an element given document, "html", and the HTML namespace.
     auto html = TRY(DOM::create_element(*this, HTML::TagNames::html, Namespace::HTML));
 
-    // 2. Let head be the result of creating an element given document, head, and the HTML namespace.
+    // 2. Let head be the result of creating an element given document, "head", and the HTML namespace.
     auto head = TRY(DOM::create_element(*this, HTML::TagNames::head, Namespace::HTML));
 
-    // 3. Let body be the result of creating an element given document, body, and the HTML namespace.
+    // 3. Let body be the result of creating an element given document, "body", and the HTML namespace.
     auto body = TRY(DOM::create_element(*this, HTML::TagNames::body, Namespace::HTML));
 
     // 4. Append html to document.
@@ -930,7 +930,7 @@ WebIDL::ExceptionOr<void> Document::set_title(String const& title)
         }
         // 2. Otherwise:
         else {
-            // 1. Let element be the result of creating an element given the document element's node document, title,
+            // 1. Let element be the result of creating an element given the document element's node document, "title",
             //    and the SVG namespace.
             element = TRY(DOM::create_element(*this, HTML::TagNames::title, Namespace::SVG));
 
@@ -959,7 +959,7 @@ WebIDL::ExceptionOr<void> Document::set_title(String const& title)
         }
         // 3. Otherwise:
         else {
-            // 1. Let element be the result of creating an element given the document element's node document, title,
+            // 1. Let element be the result of creating an element given the document element's node document, "title",
             //    and the HTML namespace.
             element = TRY(DOM::create_element(*this, HTML::TagNames::title, Namespace::HTML));
 
@@ -3156,31 +3156,31 @@ void Document::set_window(HTML::Window& window)
 // https://html.spec.whatwg.org/multipage/custom-elements.html#look-up-a-custom-element-definition
 GC::Ptr<HTML::CustomElementDefinition> Document::lookup_custom_element_definition(Optional<FlyString> const& namespace_, FlyString const& local_name, Optional<String> const& is) const
 {
-    // 1. If namespace is not the HTML namespace, return null.
+    // 1. If namespace is not the HTML namespace, then return null.
     if (namespace_ != Namespace::HTML)
         return nullptr;
 
-    // 2. If document's browsing context is null, return null.
+    // 2. If document's browsing context is null, then return null.
     if (!browsing_context())
         return nullptr;
 
-    // 3. Let registry be document's relevant global object's CustomElementRegistry object.
+    // 3. Let registry be document's relevant global object's custom element registry.
     auto registry = verify_cast<HTML::Window>(relevant_global_object(*this)).custom_elements();
 
-    // 4. If there is custom element definition in registry with name and local name both equal to localName, return that custom element definition.
-    auto converted_local_name = local_name;
-    auto maybe_definition = registry->get_definition_with_name_and_local_name(converted_local_name.to_string(), converted_local_name.to_string());
+    // 4. If registry's custom element definition set contains an item with name and local name both equal to localName, then return that item.
+    auto converted_local_name = local_name.to_string();
+    auto maybe_definition = registry->get_definition_with_name_and_local_name(converted_local_name, converted_local_name);
     if (maybe_definition)
         return maybe_definition;
 
-    // 5. If there is a custom element definition in registry with name equal to is and local name equal to localName, return that custom element definition.
+    // 5. If registry's custom element definition set contains an item with name equal to is and local name equal to localName, then return that item.
     // 6. Return null.
 
     // NOTE: If `is` has no value, it can never match as custom element definitions always have a name and localName (i.e. not stored as Optional<String>)
     if (!is.has_value())
         return nullptr;
 
-    return registry->get_definition_with_name_and_local_name(is.value(), converted_local_name.to_string());
+    return registry->get_definition_with_name_and_local_name(is.value(), converted_local_name);
 }
 
 CSS::StyleSheetList& Document::style_sheets()

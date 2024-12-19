@@ -10,6 +10,7 @@
 
 #include <LibWeb/Bindings/PlatformObject.h>
 #include <LibWeb/WebGL/Types.h>
+#include <LibWeb/WebGL/WebGLRenderingContextBase.h>
 
 namespace Web::WebGL {
 
@@ -22,19 +23,23 @@ public:
     String label() const { return m_label; }
     void set_label(String const& label) { m_label = label; }
 
-    GLuint handle() const { return m_handle; }
+    ErrorOr<GLuint> handle(WebGLRenderingContextBase const* context) const;
 
 protected:
-    explicit WebGLObject(JS::Realm&, GLuint handle);
+    explicit WebGLObject(JS::Realm&, WebGLRenderingContextBase&, GLuint handle);
 
-    virtual void initialize(JS::Realm&) override;
+    void initialize(JS::Realm&) override;
+    void visit_edges(Visitor&) override;
 
     bool invalidated() const { return m_invalidated; }
 
 private:
+    // FIXME: It should be GC::Ptr instead of raw pointer, but we need to make WebGLRenderingContextBase inherit from PlatformObject first.
+    WebGLRenderingContextBase* m_context;
+    GLuint m_handle { 0 };
+
     bool m_invalidated { false };
     String m_label;
-    GLuint m_handle { 0 };
 };
 
 }

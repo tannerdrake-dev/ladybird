@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 
-import os
-import sys
-
+from collections import namedtuple
+from dataclasses import dataclass
+from enum import Enum
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urljoin
 from urllib.request import urlopen
-from collections import namedtuple
-from enum import Enum
 import re
+import os
+import sys
 
 wpt_base_url = 'https://wpt.live/'
 
@@ -30,10 +30,21 @@ class TestType(Enum):
 
 PathMapping = namedtuple('PathMapping', ['source', 'destination'])
 
+
+class ResourceType(Enum):
+    INPUT = 1
+    EXPECTED = 2
+
+
+@dataclass
+class ResourceAndType:
+    resource: str
+    type: ResourceType
+
+
 test_type = TestType.TEXT
 raw_reference_path = None  # As specified in the test HTML
 reference_path = None  # With parent directories
-src_values = []
 
 
 class LinkedResourceFinder(HTMLParser):
@@ -42,17 +53,22 @@ class LinkedResourceFinder(HTMLParser):
         self._tag_stack_ = []
         self._match_css_url_ = re.compile(r"url\(\"?(?P<url>[^\")]+)\"?\)")
         self._match_css_import_string_ = re.compile(r"@import\s+\"(?P<url>[^\")]+)\"")
+        self._resources = []
+
+    @property
+    def resources(self):
+        return self._resources
 
     def handle_starttag(self, tag, attrs):
         self._tag_stack_.append(tag)
-        if tag == "script":
+        if tag in ["script", "img"]:
             attr_dict = dict(attrs)
             if "src" in attr_dict:
-                src_values.append(attr_dict["src"])
+                self._resources.append(attr_dict["src"])
         if tag == "link":
             attr_dict = dict(attrs)
             if attr_dict["rel"] == "stylesheet":
-                src_values.append(attr_dict["href"])
+                self._resources.append(attr_dict["href"])
 
     def handle_endtag(self, tag):
         self._tag_stack_.pop()
@@ -62,11 +78,11 @@ class LinkedResourceFinder(HTMLParser):
             # Look for uses of url()
             url_iterator = self._match_css_url_.finditer(data)
             for match in url_iterator:
-                src_values.append(match.group("url"))
+                self._resources.append(match.group("url"))
             # Look for @imports that use plain strings - we already found the url() ones
             import_iterator = self._match_css_import_string_.finditer(data)
             for match in import_iterator:
-                src_values.append(match.group("url"))
+                self._resources.append(match.group("url"))
 
 
 class TestTypeIdentifier(HTMLParser):
@@ -92,39 +108,30 @@ class TestTypeIdentifier(HTMLParser):
                 self.ref_test_link_found = True
 
 
-def map_to_path(sources, is_resource=True, resource_path=None):
-    if is_resource:
-        # Add it as a sibling path if it's a relative resource
-        sibling_location = Path(resource_path).parent.__str__()
-        sibling_import_path = test_type.input_path + '/' + sibling_location
+def map_to_path(sources: list[ResourceAndType], is_resource=True, resource_path=None) -> list[PathMapping]:
+    filepaths: list[PathMapping] = []
 
-        def remapper(x):
-            if x.startswith('/'):
-                return test_type.input_path + x
-            return sibling_import_path + '/' + x
+    for source in sources:
+        base_directory = test_type.input_path if source.type == ResourceType.INPUT else test_type.expected_path
 
-        filepaths = list(map(remapper, sources))
-        filepaths = list(map(lambda x: Path(x), filepaths))
-    else:
-        # Add the test_type.input_path to the sources if root files
-        def remapper(x):
-            if x.startswith('/'):
-                return test_type.input_path + x
-            return test_type.input_path + '/' + x
+        if source.resource.startswith('/') or not is_resource:
+            file_path = base_directory + '/' + source.resource
+        else:
+            # Add it as a sibling path if it's a relative resource
+            sibling_location = str(Path(resource_path).parent)
+            parent_directory = base_directory + '/' + sibling_location
 
-        filepaths = list(map(lambda x: Path(remapper(x)), sources))
+            file_path = parent_directory + '/' + source.resource
 
-    # Map to source and destination
-    def path_mapper(x):
-        output_path = wpt_base_url + x.__str__().replace(test_type.input_path, '')
-        return PathMapping(output_path, x.absolute())
+        # Map to source and destination
+        output_path = wpt_base_url + file_path.replace(base_directory, '')
 
-    filepaths = list(map(path_mapper, filepaths))
+        filepaths.append(PathMapping(output_path, Path(file_path).absolute()))
 
     return filepaths
 
 
-def modify_sources(files):
+def modify_sources(files, resources: list[ResourceAndType]) -> None:
     for file in files:
         # Get the distance to the wpt-imports folder
         folder_index = str(file).find(test_type.input_path)
@@ -141,10 +148,10 @@ def modify_sources(files):
             page_source = f.read()
 
         # Iterate all scripts and overwrite the src attribute
-        for i, src_value in enumerate(src_values):
-            if src_value.startswith('/'):
-                new_src_value = parent_folder_path + src_value[1::]
-                page_source = page_source.replace(src_value, new_src_value)
+        for i, resource in enumerate(map(lambda r: r.resource, resources)):
+            if resource.startswith('/'):
+                new_src_value = parent_folder_path + resource[1::]
+                page_source = page_source.replace(resource, new_src_value)
 
         # Look for mentions of the reference page, and update their href
         if raw_reference_path is not None:
@@ -219,7 +226,7 @@ def main():
     raw_reference_path = identifier.reference_path
     print(f"Identified {url_to_import} as type {test_type}, ref {raw_reference_path}")
 
-    main_file = [resource_path]
+    main_file = [ResourceAndType(resource_path, ResourceType.INPUT)]
     main_paths = map_to_path(main_file, False)
 
     if test_type == TestType.REF and raw_reference_path is None:
@@ -242,11 +249,21 @@ def main():
     files_to_modify = download_files(main_paths)
     create_expectation_files(main_paths)
 
-    parser = LinkedResourceFinder()
-    parser.feed(page)
+    input_parser = LinkedResourceFinder()
+    input_parser.feed(page)
+    additional_resources = list(map(lambda s: ResourceAndType(s, ResourceType.INPUT), input_parser.resources))
 
-    modify_sources(files_to_modify)
-    script_paths = map_to_path(src_values, True, resource_path)
+    expected_parser = LinkedResourceFinder()
+    for path in main_paths[1:]:
+        with urlopen(path.source) as response:
+            page = response.read().decode("utf-8")
+            expected_parser.feed(page)
+    additional_resources.extend(
+        list(map(lambda s: ResourceAndType(s, ResourceType.EXPECTED), expected_parser.resources))
+    )
+
+    modify_sources(files_to_modify, additional_resources)
+    script_paths = map_to_path(additional_resources, True, resource_path)
     download_files(script_paths)
 
 
